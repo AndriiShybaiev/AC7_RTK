@@ -4,6 +4,7 @@ import {useState, lazy, Suspense, createContext} from "react";
 import type { MenuItem, CartItem } from "./entities/entities";
 import FoodOrder from "./components/FoodOrder";
 import logger from "./services/logging";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 export interface FoodAppContextType {
   orderFood: (food: MenuItem, quantity: number) => void;
@@ -85,7 +86,6 @@ function App() {
       });
       logger.debug(`Order: applied; foodId=${food.id}`);
     }
-
   }
 
   const handleReturnToMenu = () => {
@@ -111,6 +111,7 @@ function App() {
   const cartTotal = cartItems.reduce((sum, c) => sum + c.price * c.quantity, 0);
 
   return (
+      <ErrorBoundary fallback={<div>Algo salió mal!</div>}>
       <foodAppContext.Provider value={{ orderFood }}>
       <div className="App">
         <button
@@ -185,6 +186,7 @@ function App() {
         )}
       </div>
       </foodAppContext.Provider>
+      </ErrorBoundary>
   );
 }
 
