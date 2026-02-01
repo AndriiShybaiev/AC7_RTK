@@ -1,10 +1,12 @@
 import "./App.css";
-import {useState, lazy, Suspense, createContext} from "react";
+import { useState, lazy, Suspense, createContext, useEffect } from "react";
+
 
 import type { MenuItem, CartItem } from "./entities/entities";
 import FoodOrder from "./components/FoodOrder";
 import logger from "./services/logging";
 import ErrorBoundary from "./components/ErrorBoundary";
+import ordersService, { type Order } from "./services/ordersService";
 
 export interface FoodAppContextType {
   orderFood: (food: MenuItem, quantity: number) => void;
@@ -57,36 +59,63 @@ function App() {
   // --- carrito ---
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
+
+  useEffect(() => {
+    logger.debug("Orders: subscribe start");
+    setOrdersLoading(true);
+
+    const unsub = ordersService.subscribe(
+        (data) => {
+          setOrders(data);
+          setOrdersLoading(false);
+          setOrdersError(null);
+        },
+        (e) => {
+          logger.error(`Orders: subscribe error; ${String(e)}`);
+          setOrdersLoading(false);
+          setOrdersError(String(e));
+        }
+    );
+
+    return unsub;
+  }, []);
+
+
   const orderFood = (food: MenuItem, quantity: number) => {
     logger.info(`Order: start; foodId=${food.id}, qty=${quantity}`);
+
     if (!Number.isFinite(quantity) || quantity <= 0) {
       logger.warn(`Order: invalid quantity; foodId=${food.id}, qty=${quantity}`);
       return;
     }
+
     if (quantity > food.quantity) {
       logger.warn(`Order: qty > stock; foodId=${food.id}, qty=${quantity}, stock=${food.quantity}`);
-      // 1) stock
-      setMenuItems((prev) =>
-          prev.map((item) =>
-              item.id === food.id
-                  ? {...item, quantity: Math.max(0, item.quantity - quantity)}
-                  : item
-          )
-      );
-
-      // 2) carrito
-      setCartItems((prev) => {
-        const existing = prev.find((c) => c.id === food.id);
-        if (existing) {
-          return prev.map((c) =>
-              c.id === food.id ? {...c, quantity: c.quantity + quantity} : c
-          );
-        }
-        return [...prev, {id: food.id, name: food.name, price: food.price, quantity}];
-      });
-      logger.debug(`Order: applied; foodId=${food.id}`);
+      return; // <-- вот это главное
     }
-  }
+
+    // 1) stock
+    setMenuItems((prev) =>
+        prev.map((item) =>
+            item.id === food.id ? { ...item, quantity: Math.max(0, item.quantity - quantity) } : item
+        )
+    );
+
+    // 2) carrito
+    setCartItems((prev) => {
+      const existing = prev.find((c) => c.id === food.id);
+      if (existing) {
+        return prev.map((c) => (c.id === food.id ? { ...c, quantity: c.quantity + quantity } : c));
+      }
+      return [...prev, { id: food.id, name: food.name, price: food.price, quantity }];
+    });
+
+    logger.debug(`Order: applied; foodId=${food.id}`);
+  };
+
 
   const handleReturnToMenu = () => {
     logger.debug("UI: return to menu");
@@ -182,6 +211,46 @@ function App() {
                     </>
                 )}
               </div>
+              {/* --- pedidos UI (Firebase) --- */}
+              <div className="ordersBox">
+                <h4 className="subTitle">Pedidos (Firebase)</h4>
+
+                {ordersLoading && <p>Cargando pedidos...</p>}
+                {ordersError && <p>Error cargando pedidos: {ordersError}</p>}
+
+                {!ordersLoading && !ordersError && orders.length === 0 && <p>No hay pedidos.</p>}
+
+                {!ordersLoading && !ordersError && orders.length > 0 && (
+                    <ul className="ulOrders">
+                      {orders.map((o) => (
+                          <li key={o.id} className="liOrders">
+                        <span>
+                          #{o.id} — {o.status} — {o.total}$
+                        </span>
+
+                            <button
+                                onClick={() => {
+                                  logger.info(`Orders: mark paid; id=${o.id}`);
+                                  ordersService.patch(o.id, { status: "PAID" });
+                                }}
+                            >
+                              Marcar pagado
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                  logger.warn(`Orders: delete; id=${o.id}`);
+                                  ordersService.deleteById(o.id);
+                                }}
+                            >
+                              Borrar
+                            </button>
+                          </li>
+                      ))}
+                    </ul>
+                )}
+              </div>
+
             </>
         )}
       </div>

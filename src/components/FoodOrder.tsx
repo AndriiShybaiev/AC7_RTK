@@ -33,7 +33,6 @@ function FoodOrder(props: FoodOrderProps) {
         logger.info(`FoodOrder: send order clicked; foodId=${props.food.id}, qty=${quantity}`);
         setSaveState("saving");
         setSaveError(null);
-        setIsOrdered(true);
         try{
             quantityContext?.orderFood(props.food, quantity);
 
@@ -51,6 +50,7 @@ function FoodOrder(props: FoodOrderProps) {
             setSaveState("saved");
         } catch (e) {
             logger.error(`Order: save failed; ${String(e)}`);
+            setIsOrdered(false);
             setSaveState("error");
             setSaveError(String(e));
         }
